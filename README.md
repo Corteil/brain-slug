@@ -41,10 +41,13 @@ Use an EMF 2022 TiDAL badge as a second processor for an EMF Tildagon (2024) / S
 
 ### Implication for `usbhost.start()`
 
-1. Disconnect the device stack (`tud_disconnect()` plus a stop of any `machine.USBDevice` use), then tear TinyUSB down fully. Whether the pinned `tinyusb-espressif` has `tusb_teardown()`/`dcd_deinit` is unchecked.
+1. Disconnect the device stack (`tud_disconnect()` plus a stop of any `machine.USBDevice` use), then tear TinyUSB down fully. The pinned `tinyusb-espressif` (branch `cherrypick/dwc2_zlp_fix`) has `tusb_teardown()`. It calls `tud_deinit()`, which does `dcd_int_disable()` (this frees the ESP interrupt for DWC2 via `esp_intr_free`), `dcd_disconnect()`, a weak no-op `dcd_deinit()` for DWC2, and the class-driver deinit. That covers steps 1 and 3. `mp_usbd_cdc.c` already checks `tusb_inited()`, so REPL output should not touch TinyUSB while it is down (unverified).
 2. `usb_del_phy(phy_hdl)`: needs a small accessor added to `usb.c`, since `phy_hdl` is static.
 3. Free or disable the DWC2 interrupt TinyUSB registered.
 4. Only then `usb_host_install()` (it creates its own PHY).
 5. `stop()` must reverse this: uninstall host, recreate the device PHY, call `tusb_init()` again, flip the mux back.
 
 This needs patches to MicroPython's esp32 port (`usb.c`), so it will go into the repo as a patch against the pinned commit, like the existing ones in `badge-2024-software/patches/`.
+
+### Status
+Teardown looks feasible. Remaining: the `usb.c` PHY accessor patch, restart via `tusb_init()` (`mp_usbd_init()`), and testing on hardware.
