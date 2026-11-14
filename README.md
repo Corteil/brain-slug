@@ -22,7 +22,6 @@ Use an EMF 2022 TiDAL badge as a second processor for an EMF Tildagon (2024) / S
 
 ## Open problems
 
-- The device-mode stack (TinyUSB or USB-Serial-JTAG) that owns the controller must be stopped before `usb_host_install()`. Not implemented.
 - Add the `usb` component and `espressif/usb_host_cdc_acm` to the build; the ESP-IDF version is unchecked.
 - `cdc_acm_host_open()` is called from the new-device callback, which is the wrong context; signal a task instead.
 - While the mux points at J8, USB serial/REPL on J7 is unavailable.
@@ -32,3 +31,20 @@ Use an EMF 2022 TiDAL badge as a second processor for an EMF Tildagon (2024) / S
 
 - https://github.com/emfcamp/badge-2024-hardware
 - https://github.com/emfcamp/badge-2024-software
+
+## How the firmware owns USB today (MicroPython e0e9fbb, v1.28.0, ESP-IDF v5.5.1)
+
+- `ports/esp32/main.c` calls `usb_phy_init()` (OTG PHY in device mode; the handle is `static` in `usb.c`) and later `mp_usbd_init()`, which calls `tusb_init()`. TinyUSB (the `espressif/tinyusb` component) runs as a USB *device* on the S3's single OTG controller. CDC REPL, mass storage and `machine.USBDevice` all sit on it.
+- It is not driven by a FreeRTOS task: `mp_usbd_task_callback` runs from the MicroPython scheduler.
+- MicroPython only has `mp_usbd_disconnect()` (`tud_disconnect()`). I found no TinyUSB teardown, no PHY delete (other than `usb_usj_mode()`, which is for the bootloader) and no DWC2 interrupt release.
+- ESP-IDF `usb_host` drives the same DWC2 controller with its own driver and interrupt, so the two cannot coexist.
+
+### Implication for `usbhost.start()`
+
+1. Disconnect the device stack (`tud_disconnect()` plus a stop of any `machine.USBDevice` use), then tear TinyUSB down fully. Whether the pinned `tinyusb-espressif` has `tusb_teardown()`/`dcd_deinit` is unchecked.
+2. `usb_del_phy(phy_hdl)`: needs a small accessor added to `usb.c`, since `phy_hdl` is static.
+3. Free or disable the DWC2 interrupt TinyUSB registered.
+4. Only then `usb_host_install()` (it creates its own PHY).
+5. `stop()` must reverse this: uninstall host, recreate the device PHY, call `tusb_init()` again, flip the mux back.
+
+This needs patches to MicroPython's esp32 port (`usb.c`), so it will go into the repo as a patch against the pinned commit, like the existing ones in `badge-2024-software/patches/`.
