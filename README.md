@@ -6,6 +6,7 @@ Use an EMF 2022 TiDAL badge as a second processor for an EMF Tildagon (2024) / S
 
 ## Findings (from the hardware and firmware repos)
 
+- The 2025/26 badges reuse the same back board (`tildagon-base`; the 2026 repo folder only adds mid/touch boards), so the USB design below applies to all of them.
 - Both badges use an ESP32-S3, so both have a USB-OTG controller.
 - The Tildagon has two USB-C ports. J7 is the device port (FUSB302 + BQ25895 charger). J8 is the host port, with its own FUSB302 and an MT9700 VBUS switch (1.5 A limit).
 - A TS3USB221A mux routes the S3's USB D+/D- (GPIO19/20) to J7 or J8. Select line `USB_SEL` is the AW9523B expander pin `ext_pin[2]` pin 5 (P0_5), driven low at boot. Low should be J7, high J8 (inferred from the schematic, untested). `VBUS_SW` is `ext_pin[2]` pin 4.
@@ -26,7 +27,6 @@ Use an EMF 2022 TiDAL badge as a second processor for an EMF Tildagon (2024) / S
 - `cdc_acm_host_open()` is called from the new-device callback, which is the wrong context; signal a task instead.
 - While the mux points at J8, USB serial/REPL on J7 is unavailable.
 - Mux polarity is unverified.
-- Spaceagon (2026) schematic not checked; the USB design may differ.
 
 ## Sources
 
